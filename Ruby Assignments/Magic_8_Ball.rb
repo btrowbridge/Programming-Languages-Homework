@@ -35,7 +35,7 @@ end
 
 #This class will ask the player if they want to play,
 #ask for a question, respond and then ask to play again, 
-#repeating unless the user types 'y'
+#repeating if the user doe not input 'y'
 class Magic8Ball
 	def greeting (name)
 		print "Welcome #{name} to The Magic 8 Ball  program. (Press enter to continue) \n\n"
@@ -65,6 +65,7 @@ class Magic8Ball
 		print "What is your question?\n\n"
 		STDIN.gets
 		Screen.cls
+
 		r = Random.new
 		randint = r.rand(6)
 		case randint
@@ -87,7 +88,7 @@ class Magic8Ball
 	end
 end
 
-
+#Begin
 player = Player.new
 ball = Magic8Ball.new
 ball.greeting(player.name)
