@@ -8,88 +8,149 @@ Spring 2016
 package main
 
 import (
+	"bufio"
 	"crypto/sha1"
 	"flag"
 	"fmt"
+	//"io/ioutil"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
+	"time"
 )
 
+var GoCount int
+var fileCount int
+
+//struct holding file stuff that we care about
 type FileStuff struct {
-	name  string
-	hash  [20]byte
-	count uint
+	filepath   string
+	hash       string
+	count      uint
+	duplicates []string
 }
 
-func processFile(results chan<- FileStuff, file os.FileInfo) {
+//processes the file and codes the data through the Sha-1 algorithm
+func processFile(results chan<- FileStuff, filepath string) {
 
-	coder := sha1.New()
-	coder.Write([]byte(file.Sys().([]byte)))
-	result := sha1.Sum(file.Sys().([]byte))
+	hasher := sha1.New()
 
-	encodedFile := FileStuff{file.Name(), result, 1}
-	results <- encodedFile
+	//f, err := ioutil.ReadFile(filepath)
+	infile, err := os.Open(filepath)
+	if err != nil {
+		fmt.Printf("Opening %v returned with an error of %v.\n", filepath, err.Error())
+	} else {
+		fileCount += 1
+	}
+
+	defer infile.Close()
+
+	infile.WriteString(hasher)
+
+	result := string(hasher.Sum(nil)[:20])
+
+	//creates FileStuff object
+	encodedFile := FileStuff{filepath, result, 1, nil}
+	results <- encodedFile //pushes to thread safe channel
+
 }
 
-func findDuplicates(root string, results chan<- FileStuff) error {
-
+//scoping function to hold the recursive Walk() function
+func findDuplicates(root string, results chan FileStuff) {
+	fmt.Println("Finding Duplicates...")
+	var yield sync.WaitGroup
+	//Processes each file, starting new goroutines on larger files
 	walkfn := func(path string, f os.FileInfo, err error) error {
-		if f.Size() > 1024 {
-			print("New Process")
-			go processFile(results, f)
+		if !f.IsDir() {
+			if f.Size() > 1024 {
 
-		} else {
-			processFile(results, f)
+				//fmt.Println("Go routine: ", count)
+				GoCount += 1
+				yield.Add(1)
+				go func() {
+					processFile(results, path)
+					defer yield.Done()
+				}()
+			} else {
+				processFile(results, path)
+			}
 		}
 		return err
+
 	}
 
-	go func() {
-		err := filepath.Walk(root, walkfn)
-		fmt.Printf("filepath.Walk() returned %v\n", err)
-	}()
-	close(results)
-	return nil
+	err := filepath.Walk(root, walkfn)
+	if err != nil {
+		fmt.Printf("filepath.Walk() returned %v\n", err.Error())
+	}
+
+	yield.Wait()
+	close(results) //channel closes after Walk
 }
 
+//takes results on the channel and sorts them into unique and duplicate filemaps
+//outputs map of duplicates and first instance
 func mergeResults(results <-chan FileStuff) map[string]FileStuff {
-	uniqueFiles := make(map[[20]byte]FileStuff)
-	duplicates := make(map[string]FileStuff)
-
+	fmt.Println("Merging Results...")
+	fileList := make(map[string]FileStuff) //uses hash to identify unique
+	//loops until results is closed and empty
 	for file := range results {
-		if _, ok := uniqueFiles[file.hash]; ok {
-			if temp, ok := duplicates[file.name]; ok {
-				temp.count += 1
-			} else {
-				file.count = 2
-				duplicates[file.name] = file
-			}
+		if f, ok := fileList[file.hash]; ok {
+
+			f.count += 1
+			f.duplicates = append(f.duplicates, file.filepath) //add to duplicates list
+
 		} else {
-			uniqueFiles[file.hash] = file
+
+			fileList[file.hash] = file
+
 		}
 	}
-	return duplicates
+	return fileList
 }
 
-func outputResults(duplicates map[string]FileStuff) {
+func outputResults(fileList map[string]FileStuff) {
+	fmt.Println("Results...")
+	//outputs the name and count of duplicate files
+	for _, file := range fileList {
+		if file.count > 1 {
+			fmt.Printf("Duplicates found of first instance %v with %v occurrences.\n", file.filepath, file.count)
 
-	for _, v := range duplicates {
-		fmt.Printf("Match found in %v with %v occurrences.", v.name, v.count)
+			for dupePath := range file.duplicates {
+				fmt.Printf("-----Duplicates  found in %v.\n", dupePath)
+			}
+		}
 	}
+
 }
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU()) // Use all the machine's cores
+
 	flag.Parse()
 	root := flag.Arg(0)
+
+	//main channel
 	results := make(chan FileStuff)
 
-	findDuplicates(root, results)
+	start := time.Now() //timer
 
-	go func() {
-		duplicates := mergeResults(results)
-		defer outputResults(duplicates)
-	}()
+	//finds duplicates
+	go findDuplicates(root, results)
+
+	//moves duplicates from merge to output
+	fileList := mergeResults(results)
+	outputResults(fileList)
+
+	//calc time
+	end := time.Now()
+	timer := end.Sub(start)
+	//analytics
+	fmt.Println("Program Done!")
+	fmt.Println("Go Routine Count: ", GoCount)
+	fmt.Println("File Count: ", fileCount)
+	fmt.Println("Timer: ", timer)
 
 }
