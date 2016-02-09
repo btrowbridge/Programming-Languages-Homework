@@ -8,12 +8,9 @@ Spring 2016
 package main
 
 import (
-	"bufio"
 	"crypto/sha1"
 	"flag"
 	"fmt"
-	//"io/ioutil"
-	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -27,34 +24,50 @@ var fileCount int
 //struct holding file stuff that we care about
 type FileStuff struct {
 	filepath   string
-	hash       string
+	hash       [20]byte
 	count      uint
-	duplicates []string
+	duplicates []FileStuff
+}
+
+func check(e error) {
+	if e != nil {
+		fmt.Printf("ERROR: ", e.Error())
+		panic(e)
+	}
 }
 
 //processes the file and codes the data through the Sha-1 algorithm
-func processFile(results chan<- FileStuff, filepath string) {
+func processFile(results chan<- FileStuff, filepath string, info os.FileInfo) {
 
 	hasher := sha1.New()
+	hasher.Reset()
 
-	//f, err := ioutil.ReadFile(filepath)
-	infile, err := os.Open(filepath)
-	if err != nil {
-		fmt.Printf("Opening %v returned with an error of %v.\n", filepath, err.Error())
-	} else {
-		fileCount += 1
+	file, err := os.Open(filepath)
+	check(err)
+	defer file.Close()
+
+	data := make([]byte, info.Size())
+
+	_, err = file.Read(data)
+	check(err)
+
+	hasher.Write(data)
+
+	hash := hasher.Sum(nil)[:20]
+
+	var result [20]byte
+
+	for i := range hash {
+		result[i] = hash[i]
 	}
 
-	defer infile.Close()
-
-	infile.WriteString(hasher)
-
-	result := string(hasher.Sum(nil)[:20])
+	//fmt.Printf("Filepath: %v  | Hash: %s  \n", filepath, result)
+	//panic(nil)
 
 	//creates FileStuff object
-	encodedFile := FileStuff{filepath, result, 1, nil}
+	encodedFile := FileStuff{filepath, result, 1, []FileStuff{}}
 	results <- encodedFile //pushes to thread safe channel
-
+	fileCount += 1
 }
 
 //scoping function to hold the recursive Walk() function
@@ -70,11 +83,11 @@ func findDuplicates(root string, results chan FileStuff) {
 				GoCount += 1
 				yield.Add(1)
 				go func() {
-					processFile(results, path)
+					processFile(results, path, f)
 					defer yield.Done()
 				}()
 			} else {
-				processFile(results, path)
+				processFile(results, path, f)
 			}
 		}
 		return err
@@ -82,9 +95,7 @@ func findDuplicates(root string, results chan FileStuff) {
 	}
 
 	err := filepath.Walk(root, walkfn)
-	if err != nil {
-		fmt.Printf("filepath.Walk() returned %v\n", err.Error())
-	}
+	check(err)
 
 	yield.Wait()
 	close(results) //channel closes after Walk
@@ -92,34 +103,38 @@ func findDuplicates(root string, results chan FileStuff) {
 
 //takes results on the channel and sorts them into unique and duplicate filemaps
 //outputs map of duplicates and first instance
-func mergeResults(results <-chan FileStuff) map[string]FileStuff {
+func mergeResults(results <-chan FileStuff) map[[20]byte]FileStuff {
 	fmt.Println("Merging Results...")
-	fileList := make(map[string]FileStuff) //uses hash to identify unique
+	fileList := make(map[[20]byte]FileStuff) //uses hash to identify unique
 	//loops until results is closed and empty
-	for file := range results {
-		if f, ok := fileList[file.hash]; ok {
+	for newFile := range results {
+		if file, ok := fileList[newFile.hash]; ok {
 
-			f.count += 1
-			f.duplicates = append(f.duplicates, file.filepath) //add to duplicates list
+			file.count++
+			file.duplicates = append(file.duplicates, newFile) //add to duplicates list
+			fileList[file.hash] = file
 
 		} else {
 
-			fileList[file.hash] = file
+			fileList[newFile.hash] = newFile
 
 		}
 	}
 	return fileList
 }
 
-func outputResults(fileList map[string]FileStuff) {
+func outputResults(fileList map[[20]byte]FileStuff) {
 	fmt.Println("Results...")
 	//outputs the name and count of duplicate files
 	for _, file := range fileList {
 		if file.count > 1 {
-			fmt.Printf("Duplicates found of first instance %v with %v occurrences.\n", file.filepath, file.count)
+			fmt.Printf("Duplicates found of first instance %s with %d occurrences| hash value: %v\n", file.filepath, file.count)
+			//fmt.Printf("Duplicates found of first instance %s with %d occurrences| hash value: %v\n", file.filepath, file.count, file.hash) //verbose
 
-			for dupePath := range file.duplicates {
-				fmt.Printf("-----Duplicates  found in %v.\n", dupePath)
+			for _, dupe := range file.duplicates {
+				fmt.Printf("      %s", dupe.filepath)
+				//fmt.Printf("      %s | Hash: %v\n", dupe.filepath, dupe.hash) //verbose
+
 			}
 		}
 	}
@@ -131,6 +146,7 @@ func main() {
 
 	flag.Parse()
 	root := flag.Arg(0)
+	//root := "/cop4020/gecko-dev/"
 
 	//main channel
 	results := make(chan FileStuff)
@@ -148,9 +164,13 @@ func main() {
 	end := time.Now()
 	timer := end.Sub(start)
 	//analytics
+	uniqueFiles := len(fileList)
+	dupeFiles := fileCount - uniqueFiles
 	fmt.Println("Program Done!")
 	fmt.Println("Go Routine Count: ", GoCount)
 	fmt.Println("File Count: ", fileCount)
 	fmt.Println("Timer: ", timer)
+	fmt.Println("Unique Files: ", uniqueFiles)
+	fmt.Println("Duplicates: ", dupeFiles)
 
 }
