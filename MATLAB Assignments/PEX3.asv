@@ -1,0 +1,39 @@
+
+%
+%MATLAB PEX 3
+%
+%Bradley Trowbridge
+%
+%Programming Languages with Dean Bushey
+%
+
+filename = 'swiss-alps.txt'
+file = fopen(filename,'rt');
+
+if file < 0
+    error('Problem opening file %s\n', filename);
+end
+
+title = fgetl(file);
+dimensions = fscanf(file,'%i');
+sizeCell = [dimension(1) 
+
+fcell = 
+
+
+
+
+% for ii = 1:1:row
+%     for jj = 1:1:column
+%         fin = fscanf(file);
+%         if ischar(fin) 
+%             fcell{ii,jj} = typecast(fin,'%e');
+%         else
+%             break;
+%         end 
+%     end   
+% end
+
+
+fclose(filename);
+

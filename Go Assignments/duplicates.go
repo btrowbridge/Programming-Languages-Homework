@@ -128,11 +128,13 @@ func outputResults(fileList map[[20]byte]FileStuff) {
 	//outputs the name and count of duplicate files
 	for _, file := range fileList {
 		if file.count > 1 {
-			fmt.Printf("Duplicates found of first instance %s with %d occurrences| hash value: %v\n", file.filepath, file.count)
+
+			fmt.Printf("Duplicates found of first instance %v with %d occurrences\n", file.filepath, file.count)
 			//fmt.Printf("Duplicates found of first instance %s with %d occurrences| hash value: %v\n", file.filepath, file.count, file.hash) //verbose
 
 			for _, dupe := range file.duplicates {
-				fmt.Printf("      %s", dupe.filepath)
+
+				fmt.Printf("      %v\n", dupe.filepath)
 				//fmt.Printf("      %s | Hash: %v\n", dupe.filepath, dupe.hash) //verbose
 
 			}
