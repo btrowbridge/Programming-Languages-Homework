@@ -16,16 +16,17 @@ end
 
 title = fgetl(file);
 dim = fscanf(file,'%i', 2);
-sizeCell = [dim(1) dim(2)];
+rows = dim(1);
+columns = dim(2);
+sizeCell = [rows , columns];
 map = fscanf(file, '%e', sizeCell);
+map = map';
 
 
 fclose(file);
-fig = imagesc(map);
-colormap(fig,'gray');
 
-function[peaks] = findPeaks(m);
-for 
-end
+[px, py] = gradient(map,1,1);
+
+
 
 
