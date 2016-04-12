@@ -21,7 +21,7 @@ sudoku(Rows) :-
 % Our defined square predicate
 square([], []).     			   % Base case empty list  
 square([A1,A2|An], [B1,B2|Bn]) :-  % Splits rows into the first two element and the remaining
-  all_distinct([A,B,C,D]),         % Ensure that this squares' elements are distinct
+  all_distinct([A1,A2,B1,B2]),     % Ensure that this squares' elements are distinct
   square(An, Bn). 				   % Recursive call on the remaining
 
 %Sample test cases
